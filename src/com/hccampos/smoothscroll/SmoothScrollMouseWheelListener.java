@@ -9,16 +9,15 @@ import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
 
 class SmoothScrollMouseWheelListener implements MouseWheelListener {
-    private static final double STEP = 0.08;
-    private static final double MAX_SPEED = 30.0;
-    private static final double MAX_FORCE = 20.0;
-    private static final double FORCE_REDUCTION_FACTOR = 0.6;
+    private static final double STEP = 6;
+    private static final double MAX_SPEED = 100;
+    private static final double MAX_FORCE = 30;
+    private static final double FORCE_REDUCTION_FACTOR = 0.2;
     private static final double PSEUDO_FRICTION = 0.95;
-    private static final double GLOBAL_SCALE_FACTOR = 0.1;
-    private static final double VELOCITY_SCALE_FACTOR = 0.7f;
+    private static final int FPS = 60;
+    private static final int MILLIS_PER_FRAME = 1000 / FPS;
 
     private ScrollingModel _scrollingModel;
-    private long _lastTime = 0;
     private double _vel = 0.0;
     private double _force = 0.0;
     private boolean _animating = false;
@@ -45,7 +44,7 @@ class SmoothScrollMouseWheelListener implements MouseWheelListener {
                 while (_animating) {
                     update();
                     try {
-                        Thread.sleep(20);
+                        Thread.sleep(MILLIS_PER_FRAME);
                     } catch (InterruptedException e) {
                         System.out.println(e.getMessage());
                     }
@@ -69,30 +68,15 @@ class SmoothScrollMouseWheelListener implements MouseWheelListener {
      * the scroll offset according to these parameters.
      */
     protected void update() {
-        if (_lastTime == 0) {
-            _lastTime = System.currentTimeMillis();
-            return;
-        }
-
-        // Determine the time that has passed since the last update.
-        long currentTime = System.currentTimeMillis();
-        long t = currentTime - _lastTime;
-        _lastTime = currentTime;
-
-        // Update the force and then update the velocity according to Newtown -> F=ma
         _force *= FORCE_REDUCTION_FACTOR;
-        _vel = _vel * PSEUDO_FRICTION + _force * t; // F = ma, but since m = 1, F = a
-
-        // Make sure the speed limit is not exceeded.
+        _vel += _force;  // Note that because m=1 we have: F=ma <=> F=a
+        _vel *= PSEUDO_FRICTION;
         _vel = limitMagnitude(_vel, MAX_SPEED);
 
-        // Here we scale the velocity and then square it. This way, the scroll offset will not
-        // be moved linearly according to the velocity.
-        double scaledVel = _vel * VELOCITY_SCALE_FACTOR;
-        double delta = scaledVel * Math.abs(scaledVel) * t * GLOBAL_SCALE_FACTOR;
+        double deltaPos = _vel;
 
-        if (Math.abs(delta) >= 1.0f) {
-            SwingUtilities.invokeLater(new UpdateScrollRunnable((int) delta));
+        if (Math.abs(deltaPos) >= 1.0f) {
+            SwingUtilities.invokeLater(new UpdateScrollRunnable((int) deltaPos));
         }
     }
 
@@ -105,16 +89,11 @@ class SmoothScrollMouseWheelListener implements MouseWheelListener {
     public void mouseWheelMoved(MouseWheelEvent e) {
         double wheelDelta = e.getPreciseWheelRotation();
 
-        // If we're scrolling in the same direction, we can increase the force.
-        // Otherwise, the user wants to go the other way right away, so we reset both the
-        // force and the velocity.
-        boolean sameDirection = wheelDelta * _vel >= 0;
-        if (sameDirection) {
-            _force += wheelDelta * STEP;
-        } else {
-            _force = 0;
-            _vel = 0;
-        }
+        _force += wheelDelta * STEP;
+
+        double forceMagnitude = Math.abs(_force);
+        double normalizedForce = (_force / forceMagnitude);
+        _force += normalizedForce * (Math.pow(2, Math.min(50, forceMagnitude / 2)) - 1);
 
         // Make sure the force does not exceed MAX_FORCE.
         _force = limitMagnitude(_force, MAX_FORCE);
