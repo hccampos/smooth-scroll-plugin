@@ -9,18 +9,20 @@ import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
 
 class SmoothScrollMouseWheelListener implements MouseWheelListener {
-    private static final double STEP = 6;
-    private static final double MAX_SPEED = 100;
-    private static final double MAX_FORCE = 30;
-    private static final double FORCE_REDUCTION_FACTOR = 0.2;
-    private static final double PSEUDO_FRICTION = 0.95;
-    private static final int FPS = 60;
+    private static final int FPS = 50;
     private static final int MILLIS_PER_FRAME = 1000 / FPS;
+
+    private static final double STEP = 0.025 * MILLIS_PER_FRAME;
+    private static final double MAX_SPEED = 3.0 * MILLIS_PER_FRAME;
+    private static final double MAX_ACCELERATION = 2.5 * MILLIS_PER_FRAME;
+    private static final double PSEUDO_FRICTION = Math.pow(0.90, MILLIS_PER_FRAME / 16.0);
+    private static final double ACC_REDUCTION_FACTOR = Math.pow(0.8, MILLIS_PER_FRAME / 16.0);
 
     private ScrollingModel _scrollingModel;
     private double _vel = 0.0;
-    private double _force = 0.0;
+    private double _acc = 0.0;
     private boolean _animating = false;
+    private long _lastScroll = 0;
 
     /**
      * Constructor for our MouseWheelListener.
@@ -68,15 +70,13 @@ class SmoothScrollMouseWheelListener implements MouseWheelListener {
      * the scroll offset according to these parameters.
      */
     protected void update() {
-        _force *= FORCE_REDUCTION_FACTOR;
-        _vel += _force;  // Note that because m=1 we have: F=ma <=> F=a
+        _acc *= ACC_REDUCTION_FACTOR;
+        _vel += _acc;
         _vel *= PSEUDO_FRICTION;
         _vel = limitMagnitude(_vel, MAX_SPEED);
 
-        double deltaPos = _vel;
-
-        if (Math.abs(deltaPos) >= 1.0f) {
-            SwingUtilities.invokeLater(new UpdateScrollRunnable((int) deltaPos));
+        if (Math.abs(_vel) >= 1.0) {
+            SwingUtilities.invokeLater(new UpdateScrollRunnable(_vel));
         }
     }
 
@@ -87,16 +87,29 @@ class SmoothScrollMouseWheelListener implements MouseWheelListener {
      *      The object which contains the information of the event.
      */
     public void mouseWheelMoved(MouseWheelEvent e) {
+        if (_lastScroll == 0) {
+            _lastScroll = System.nanoTime();
+            return;
+        }
+
+        long currentTime = System.nanoTime();
+        double elapsedTime = (currentTime - _lastScroll) * 1.0e-9;
+        _lastScroll = currentTime;
+
+        if (elapsedTime == 0)
+            return;
+
         double wheelDelta = e.getPreciseWheelRotation();
+        boolean sameDirection = _vel * wheelDelta >= 0;
 
-        _force += wheelDelta * STEP;
-
-        double forceMagnitude = Math.abs(_force);
-        double normalizedForce = (_force / forceMagnitude);
-        _force += normalizedForce * (Math.pow(2, Math.min(50, forceMagnitude / 2)) - 1);
-
-        // Make sure the force does not exceed MAX_FORCE.
-        _force = limitMagnitude(_force, MAX_FORCE);
+        if (sameDirection) {
+            double currentStep = wheelDelta * STEP;
+            _acc += currentStep + currentStep / elapsedTime;
+            _acc = limitMagnitude(_acc, MAX_ACCELERATION);
+        } else {
+            _acc = 0;
+            _vel = 0;
+        }
     }
 
     /**
@@ -127,15 +140,15 @@ class SmoothScrollMouseWheelListener implements MouseWheelListener {
      * because the scroll offset can only be read and set from the event dispatching thread.
      */
     private class UpdateScrollRunnable implements Runnable {
-        private int _delta;
+        private double _delta;
 
-        public UpdateScrollRunnable(int delta) {
+        public UpdateScrollRunnable(double delta) {
             _delta = delta;
         }
 
         public void run() {
             int currentOffset = _scrollingModel.getVerticalScrollOffset();
-            _scrollingModel.scrollVertically(Math.max(0, currentOffset + _delta));
+            _scrollingModel.scrollVertically(Math.max(0, (int)Math.round(currentOffset + _delta)));
         }
     }
 }
