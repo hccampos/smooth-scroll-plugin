@@ -18,3 +18,8 @@ guess it should probably work in those as well.
 
 If you have any feedback or if you would like to contribute with some improvements, that would be
 awesome.
+
+## Changelog
+
+1.1 - Performance improvements and parameter tweaks to make the scroll experience a lot smoother.
+1.0 - Initial Release

@@ -1,6 +1,6 @@
 <idea-plugin version="2">
     <name>SmoothScroll</name>
-    <version>1.0</version>
+    <version>1.1</version>
     <vendor email="hcfields@gmail.com" url="http://www.hccampos.com">Hugo Campos</vendor>
 
     <description>Adds smooth and kinetic scrolling to the file editor.</description>
@@ -9,6 +9,19 @@
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.lang</depends>
+
+    <change-notes>
+        <![CDATA[
+            <p>1.1/p>
+            <ul>
+                <li>Performance improvements and parameter tweaks to make the scroll experience a lot smoother.</li>
+            </ul>
+            <p>1.0/p>
+            <ul>
+                <li>Initial release.</li>
+            </ul>
+        ]]>
+    </change-notes>
 
     <project-components>
         <component>
