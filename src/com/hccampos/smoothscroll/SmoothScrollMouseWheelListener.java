@@ -5,24 +5,28 @@ import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.TextEditor;
 
 import javax.swing.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
 
-class SmoothScrollMouseWheelListener implements MouseWheelListener {
+class SmoothScrollMouseWheelListener implements MouseWheelListener, ActionListener {
     private static final int FPS = 50;
     private static final int MILLIS_PER_FRAME = 1000 / FPS;
 
-    private static final double STEP = 0.025 * MILLIS_PER_FRAME;
-    private static final double MAX_SPEED = 3.0 * MILLIS_PER_FRAME;
-    private static final double MAX_ACCELERATION = 2.5 * MILLIS_PER_FRAME;
-    private static final double PSEUDO_FRICTION = Math.pow(0.90, MILLIS_PER_FRAME / 16.0);
-    private static final double ACC_REDUCTION_FACTOR = Math.pow(0.8, MILLIS_PER_FRAME / 16.0);
+    private static final double STEP = 0.0004;
+    private static final double MAX_FORCE = 0.08;
+    private static final double PSEUDO_FRICTION = 0.93;
+    private static final double ACC_REDUCTION_FACTOR = 0.8;
+    private static final double SPEED_THRESHOLD = 0.001;
 
     private ScrollingModel _scrollingModel;
-    private double _vel = 0.0;
-    private double _acc = 0.0;
-    private boolean _animating = false;
+    private double _velocity = 0.0;
+    private double _force = 0.0;
+    private long _lastUpdate = 0;
     private long _lastScroll = 0;
+
+    private Timer _timer = null;
 
     /**
      * Constructor for our MouseWheelListener.
@@ -33,36 +37,21 @@ class SmoothScrollMouseWheelListener implements MouseWheelListener {
     public SmoothScrollMouseWheelListener(FileEditor editor) {
         _scrollingModel = ((TextEditor) editor).getEditor().getScrollingModel();
         _scrollingModel.disableAnimation();
+        _timer = new Timer(MILLIS_PER_FRAME, this);
     }
 
     /**
      * Starts animating the scroll offset.
      */
     public void startAnimating() {
-        if (_animating) { return; }
-
-        Thread _animationThread = new Thread() {
-            public void run() {
-                while (_animating) {
-                    update();
-                    try {
-                        Thread.sleep(MILLIS_PER_FRAME);
-                    } catch (InterruptedException e) {
-                        System.out.println(e.getMessage());
-                    }
-                }
-            }
-        };
-
-        _animationThread.start();
-        _animating = true;
+        _timer.start();
     }
 
     /**
      * Stops animating the scroll offset.
      */
     public void stopAnimating() {
-        _animating = false;
+        _timer.stop();
     }
 
     /**
@@ -70,13 +59,27 @@ class SmoothScrollMouseWheelListener implements MouseWheelListener {
      * the scroll offset according to these parameters.
      */
     protected void update() {
-        _acc *= ACC_REDUCTION_FACTOR;
-        _vel += _acc;
-        _vel *= PSEUDO_FRICTION;
-        _vel = limitMagnitude(_vel, MAX_SPEED);
+        if (_lastUpdate == 0) {
+            _lastUpdate = System.nanoTime();
+            return;
+        }
 
-        if (Math.abs(_vel) >= 1.0) {
-            SwingUtilities.invokeLater(new UpdateScrollRunnable(_vel));
+        long currentTime = System.nanoTime();
+        double elapsedMillis = (currentTime - _lastUpdate) * 1.0e-6;
+        _lastUpdate = currentTime;
+
+        double exponent = elapsedMillis / 16.0;
+
+        _force *= Math.pow(ACC_REDUCTION_FACTOR, exponent);
+        _velocity += _force * elapsedMillis;
+        _velocity *= Math.pow(PSEUDO_FRICTION, exponent);
+
+        double speed = Math.abs(_velocity);
+        if (speed >= SPEED_THRESHOLD) {
+            int currentOffset = _scrollingModel.getVerticalScrollOffset();
+            _scrollingModel.scrollVertically(Math.max(0, (int)Math.round(currentOffset + _velocity * elapsedMillis)));
+        } else {
+            _velocity = 0.0;
         }
     }
 
@@ -93,22 +96,24 @@ class SmoothScrollMouseWheelListener implements MouseWheelListener {
         }
 
         long currentTime = System.nanoTime();
-        double elapsedTime = (currentTime - _lastScroll) * 1.0e-9;
+        double elapsedMillis = (currentTime - _lastScroll) * 1.0e-6;
         _lastScroll = currentTime;
 
-        if (elapsedTime == 0)
-            return;
+        if (elapsedMillis == 0) { return; }
 
         double wheelDelta = e.getPreciseWheelRotation();
-        boolean sameDirection = _vel * wheelDelta >= 0;
+        boolean sameDirection = _velocity * wheelDelta >= 0;
 
         if (sameDirection) {
             double currentStep = wheelDelta * STEP;
-            _acc += currentStep + currentStep / elapsedTime;
-            _acc = limitMagnitude(_acc, MAX_ACCELERATION);
+            _force += currentStep + currentStep / (elapsedMillis * 0.0007);
+
+            // Limit the magnitude of the force to MAX_FORCE.
+            double forceMagnitude = Math.abs(_force);
+            if (forceMagnitude > MAX_FORCE) { _force *= MAX_FORCE / forceMagnitude; }
         } else {
-            _acc = 0;
-            _vel = 0;
+            _force = 0;
+            _velocity = 0;
         }
     }
 
@@ -133,6 +138,11 @@ class SmoothScrollMouseWheelListener implements MouseWheelListener {
         } else {
             return value;
         }
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        update();
     }
 
     /**
