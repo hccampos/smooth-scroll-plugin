@@ -14,13 +14,15 @@ public class FileEditorListener implements FileEditorManagerListener {
 
         // Add a wheel listener to all editors.
         for(FileEditor fileEditor: editors) {
-            SmoothScrollMouseWheelListener listener = new SmoothScrollMouseWheelListener(fileEditor);
-            _listeners.put(fileEditor, listener);
+            if (fileEditor instanceof TextEditor) {
+                SmoothScrollMouseWheelListener listener = new SmoothScrollMouseWheelListener(fileEditor);
+                _listeners.put(fileEditor, listener);
 
-            listener.startAnimating();
+                listener.startAnimating();
 
-            Editor editor = ((TextEditor)fileEditor).getEditor();
-            editor.getContentComponent().addMouseWheelListener(listener);
+                Editor editor = ((TextEditor) fileEditor).getEditor();
+                editor.getContentComponent().addMouseWheelListener(listener);
+            }
         }
     }
 
@@ -38,10 +40,12 @@ public class FileEditorListener implements FileEditorManagerListener {
         for (FileEditor fileEditor: destroyedEditors) {
             SmoothScrollMouseWheelListener listener = _listeners.get(fileEditor);
 
-            listener.stopAnimating();
+            if (listener != null) {
+                listener.stopAnimating();
 
-            Editor editor = ((TextEditor)fileEditor).getEditor();
-            editor.getContentComponent().removeMouseWheelListener(listener);
+                Editor editor = ((TextEditor) fileEditor).getEditor();
+                editor.getContentComponent().removeMouseWheelListener(listener);
+            }
         }
     }
 
