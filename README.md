@@ -1,3 +1,5 @@
+# This plugin is deprecated. Use this plugin instead https://github.com/opus1269/smooth-scroller
+
 IDEA/WebStorm Smooth Scroll
 ====================
 
